@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>SAO AR Interface</title>
+    <title>SAO AR Mobile Interface</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
@@ -16,6 +16,9 @@
             --sao-bg: rgba(245, 245, 245, 0.7);
             --sao-border: rgba(200, 200, 200, 0.9);
             --sao-dark: #333;
+            --hp-green: #4caf50;
+            --hp-yellow: #ffeb3b;
+            --hp-red: #f44336;
         }
 
         * {
@@ -23,6 +26,7 @@
             margin: 0;
             padding: 0;
             user-select: none;
+            -webkit-tap-highlight-color: transparent;
             font-family: 'Rajdhani', sans-serif;
         }
 
@@ -33,21 +37,23 @@
             height: 100vh;
         }
 
-        /* Camera Background */
+        /* 1. Environment and Landmark Canvas */
         #environment-video {
             position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
+            top: 0; left: 0; width: 100%; height: 100%;
             object-fit: cover;
             z-index: 1;
         }
-
-        /* Initialization Screen */
-        #init-screen {
+        #landmarks-canvas {
             position: absolute;
-            top: 0; left: 0; right: 0; bottom: 0;
+            top: 0; left: 0; width: 100%; height: 100%;
+            z-index: 2;
+        }
+
+        /* 2. Calibration & Link Start */
+        #calibration-screen {
+            position: absolute;
+            top: 0; left: 0; width: 100vw; height: 100vh;
             background: rgba(0,0,0,0.9);
             z-index: 1000;
             display: flex;
@@ -75,67 +81,144 @@
             color: #fff;
         }
 
-        /* 3D AR Scene Container */
+        /* 3. AR Floating Scene and Shadows */
         #scene {
             position: absolute;
             top: 0; left: 0;
             width: 100vw; height: 100vh;
             perspective: 800px;
             z-index: 10;
-            pointer-events: none; /* Let clicks pass through */
+            pointer-events: none; /* Let clicks pass through to UI behind */
+            display: none; /* Hidden until gesture is detected */
         }
 
-        /* The floating UI container anchored in space */
+        /* This container rotates on X, Y, Z to stay locked in physical space */
         #ar-anchor {
             position: absolute;
             top: 50%; left: 50%;
-            width: 350px;
+            width: 100%; height: 100%;
+            /* translateZ places the entire thing deep inside the physical world */
+            transform: translateZ(-400px); 
             transform-style: preserve-3d;
-            /* Center the anchor point */
-            margin-left: -175px; 
-            margin-top: -200px;
-            /* Drop shadow simulates AR depth against the real world */
-            filter: drop-shadow(10px 20px 15px rgba(0,0,0,0.8));
-            transition: transform 0.1s linear;
-            pointer-events: auto; /* Re-enable interaction for UI */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: transform 0.1s linear, opacity 0.5s ease;
+            opacity: 0;
+            pointer-events: auto; /* Re-enable pointer events for the UI */
+        }
+        
+        #ar-anchor.show {
+            opacity: 1;
         }
 
-        /* Base UI Styles */
+        /* This large container collects the overall shadow, providing significant depth */
+        #ui-composed-shadow {
+            position: absolute;
+            width: 400px; height: 600px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 20px;
+            /* Drop shadow simulates the UI casting a shadow behind it in space */
+            filter: drop-shadow(10px 50px 30px rgba(0,0,0,0.5));
+            transform-style: preserve-3d;
+        }
+
+        /* 4. Circular Glass Widgets */
         .glass-panel {
             background: var(--sao-bg);
             backdrop-filter: blur(10px);
             -webkit-backdrop-filter: blur(10px);
             border: 1px solid rgba(255,255,255,0.6);
-            border-radius: 4px;
-            padding: 15px;
             color: var(--sao-dark);
-            margin-bottom: 15px;
             box-shadow: inset 0 0 10px rgba(255,255,255,0.5);
+            width: 170px;
+            height: 170px;
+            border-radius: 50%;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            transform-style: preserve-3d;
+            transition: all 0.2s ease;
         }
 
         .panel-header {
-            font-size: 1.2rem;
-            border-bottom: 2px solid var(--sao-orange);
-            margin-bottom: 10px;
-            text-transform: uppercase;
-            display: flex;
-            justify-content: space-between;
-        }
-
-        .list-item {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 5px;
             font-size: 1rem;
             font-weight: bold;
+            color: var(--sao-orange);
+            text-transform: uppercase;
+            border-bottom: 2px solid var(--sao-orange);
+            margin-bottom: 10px;
+            text-align: center;
+            width: 100%;
         }
 
-        .val { color: var(--sao-orange); }
+        .info-list {
+            list-style: none;
+            width: 100%;
+            text-align: center;
+        }
 
-        /* MediaPipe Cursor */
+        .info-item {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.85rem;
+            margin-bottom: 3px;
+        }
+        .info-item.val { color: var(--sao-orange); font-weight: 700; }
+
+        /* HP Battery Bar - Themed */
+        #hp-bar-outer {
+            width: 100%; height: 12px;
+            background: rgba(0,0,0,0.6);
+            border: 1px solid rgba(255,255,255,0.5);
+            border-radius: 2px;
+            overflow: hidden;
+            clip-path: polygon(0 0, 100% 0, 95% 100%, 0 100%);
+            margin-bottom: 3px;
+        }
+        #hp-bar-fill {
+            height: 100%; width: 100%;
+            background: var(--hp-green);
+            box-shadow: 0 0 8px var(--hp-green);
+            transition: width 0.5s ease, background 0.5s ease, box-shadow 0.5s ease;
+        }
+
+        /* Text Fact Display */
+        #fact-text {
+            font-size: 0.85rem;
+            text-align: center;
+            margin-bottom: 8px;
+            height: 50px;
+            overflow: hidden;
+        }
+        
+        /* Interactive Buttons */
+        .sao-btn {
+            display: inline-block;
+            background: #eee;
+            border: 1px solid #aaa;
+            padding: 5px 12px;
+            cursor: pointer;
+            border-radius: 2px;
+            text-transform: uppercase;
+            font-weight: bold;
+        }
+        .sao-btn:hover, .sao-btn.hover {
+            background: var(--sao-orange);
+            color: white;
+            border-color: white;
+            box-shadow: 0 0 10px var(--sao-orange);
+        }
+
+        /* 5. AR Virtual Cursor (Driven by hand landmarks) */
         #ar-cursor {
             position: absolute;
-            width: 20px; height: 20px;
+            width: 25px; height: 25px;
             border: 2px solid #00ff00;
             border-radius: 50%;
             transform: translate(-50%, -50%);
@@ -143,13 +226,13 @@
             pointer-events: none;
             display: none;
             box-shadow: 0 0 10px #00ff00;
+            transition: transform 0.1s ease;
         }
         
         #ar-cursor::after {
             content: '';
-            position: absolute;
-            top: 50%; left: 50%;
-            width: 4px; height: 4px;
+            position: absolute; top: 50%; left: 50%;
+            width: 5px; height: 5px;
             background: #00ff00;
             border-radius: 50%;
             transform: translate(-50%, -50%);
@@ -157,59 +240,72 @@
 
         .pinched {
             background: rgba(0, 255, 0, 0.4);
-            transform: translate(-50%, -50%) scale(0.8) !important;
+            transform: translate(-50%, -50%) scale(0.7) !important;
         }
-
-        /* Buttons */
-        .sao-btn {
-            display: inline-block;
-            background: #ddd;
-            border: 1px solid #aaa;
-            padding: 5px 10px;
-            cursor: pointer;
-            margin-top: 10px;
-        }
-        .sao-btn:hover, .sao-btn.active-click {
-            background: var(--sao-orange);
-            color: white;
-            border-color: white;
+        
+        /* Status Text for Gesture Help */
+        #gesture-status {
+            position: absolute;
+            bottom: 20px; left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255,255,255,0.7);
+            background: rgba(0,0,0,0.5);
+            padding: 5px 15px;
+            border-radius: 50px;
+            z-index: 50;
+            display: none;
         }
 
     </style>
 </head>
 <body>
 
-    <div id="init-screen">
+    <video id="environment-video" autoplay playsinline></video>
+    <canvas id="landmarks-canvas"></canvas>
+
+    <div id="calibration-screen">
         <h2 style="margin-bottom: 20px; text-shadow: 0 0 10px var(--sao-orange);">NEVEGEAR CALIBRATION</h2>
-        <button id="link-start-btn" onclick="startAR()">LINK START</button>
-        <p style="margin-top: 20px; font-size: 0.9rem; opacity: 0.7;">Requires Camera & Motion Sensors</p>
+        <button id="link-start-btn" onclick="startCalibration()">LINK START</button>
+        <p style="margin-top: 20px; font-size: 0.9rem; opacity: 0.7;">Requires Camera & Gyroscope permissions.</p>
     </div>
 
-    <video id="environment-video" autoplay playsinline></video>
+    <div id="gesture-status">POINT & SWIPE DOWN to open UI</div>
 
     <div id="ar-cursor"></div>
 
     <div id="scene">
         <div id="ar-anchor">
             
-            <div class="glass-panel">
-                <div class="panel-header"><span>Status</span><span id="clock">00:00</span></div>
-                <div class="list-item"><span>HP (Battery):</span><span class="val" id="bat-val">100%</span></div>
-                <div class="list-item"><span>Location:</span><span class="val" id="loc-val">Scanning...</span></div>
-                <button class="sao-btn" id="ping-btn">Ping Server</button>
-            </div>
+            <div id="ui-composed-shadow">
 
-            <div class="glass-panel">
-                <div class="panel-header">Diagnostics</div>
-                <div class="list-item"><span>Device Mem:</span><span class="val" id="mem-val">--</span></div>
-                <div class="list-item"><span>Cores:</span><span class="val" id="core-val">--</span></div>
-                <div class="list-item"><span>Network:</span><span class="val" id="net-val">--</span></div>
-            </div>
+                <div class="glass-panel">
+                    <div class="panel-header">Status</div>
+                    <div id="hp-bar-outer"><div id="hp-bar-fill"></div></div>
+                    <p style="margin-bottom: 5px; font-weight: bold;"><span id="hp-val">100</span> / 100 HP</p>
+                    <p id="clock" style="font-size: 1.2rem; font-weight: bold; margin-bottom: 3px;">00:00:00</p>
+                    <p id="plat-val" style="font-size: 0.8rem; text-align: center;">Scanning Platform...</p>
+                </div>
 
-            <div class="glass-panel">
-                <div class="panel-header">World Data</div>
-                <p id="fact-display" style="font-size: 0.9rem; font-weight: 500;">Connecting to cardinal system...</p>
-                <button class="sao-btn" id="next-fact-btn">Cycle Data</button>
+                <div class="glass-panel">
+                    <div class="panel-header">Diagnostics</div>
+                    <ul class="info-list">
+                        <li class="info-item"><span>Device Mem:</span><span id="mem-val" class="val">--</span></li>
+                        <li class="info-item"><span>CPU Cores:</span><span id="core-val" class="val">--</span></li>
+                        <li class="info-item"><span>Network:</span><span id="net-val" class="val">--</span></li>
+                        <li class="info-item"><span>Location:</span><span id="loc-val" class="val">--</span></li>
+                    </ul>
+                </div>
+
+                <div class="glass-panel">
+                    <div class="panel-header">World Data</div>
+                    <p id="fact-text">Connecting to Cardinal System...</p>
+                    <button class="sao-btn" id="next-fact-btn">Next Fact</button>
+                </div>
+
+                <div class="glass-panel" style="width: 100px; height: 100px;">
+                    <button class="sao-btn" id="close-btn" style="border-radius: 50px;">Close</button>
+                </div>
+
             </div>
 
         </div>
@@ -226,13 +322,33 @@
             const gain = audioCtx.createGain();
             osc.connect(gain);
             gain.connect(audioCtx.destination);
-            
             const now = audioCtx.currentTime;
-            if (type === 'click') {
+
+            if (type === 'open') {
+                // Rising triple chime
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(500, now);
+                osc.frequency.setValueAtTime(800, now + 0.05);
+                osc.frequency.setValueAtTime(1200, now + 0.1);
+                gain.gain.setValueAtTime(0.1, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+                osc.start(now);
+                osc.stop(now + 0.3);
+            } else if (type === 'close') {
+                // Deeper double tone
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(800, now);
+                osc.frequency.setValueAtTime(600, now + 0.05);
+                gain.gain.setValueAtTime(0.1, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+                osc.start(now);
+                osc.stop(now + 0.2);
+            } else if (type === 'click') {
+                // Metallic tap
                 osc.type = 'sine';
-                osc.frequency.setValueAtTime(1500, now);
-                osc.frequency.exponentialRampToValueAtTime(500, now + 0.05);
-                gain.gain.setValueAtTime(0.5, now);
+                osc.frequency.setValueAtTime(2000, now);
+                osc.frequency.exponentialRampToValueAtTime(800, now + 0.05);
+                gain.gain.setValueAtTime(0.3, now);
                 gain.gain.exponentialRampToValueAtTime(0.01, now + 0.05);
                 osc.start(now);
                 osc.stop(now + 0.05);
@@ -241,101 +357,153 @@
     </script>
 
     <script>
-        // --- 1. UI Logic & Widgets ---
-        setInterval(() => {
-            document.getElementById('clock').innerText = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-        }, 1000);
-
-        navigator.getBattery?.().then(b => {
-            document.getElementById('bat-val').innerText = Math.floor(b.level * 100) + '%';
-        });
-
-        document.getElementById('mem-val').innerText = navigator.deviceMemory ? `>= ${navigator.deviceMemory} GB` : 'Hidden';
-        document.getElementById('core-val').innerText = navigator.hardwareConcurrency || 'Hidden';
-        document.getElementById('net-val').innerText = navigator.connection?.effectiveType || 'Offline';
-
-        const facts = [
-            "The first computer bug was an actual real moth.",
-            "A single fiber optic cable can carry 100 Terabits per second.",
-            "Your smartphone has more processing power than the Apollo 11 moon lander.",
-            "There are over 4 billion active internet users worldwide."
-        ];
-        let factIdx = 0;
-        document.getElementById('next-fact-btn').addEventListener('click', (e) => {
+        // --- 1. System Initialisation (LINK START) ---
+        async function startCalibration() {
             playSfx('click');
-            factIdx = (factIdx + 1) % facts.length;
-            document.getElementById('fact-display').innerText = facts[factIdx];
-        });
+            document.getElementById('calibration-screen').style.display = 'none';
 
-        document.getElementById('ping-btn').addEventListener('click', () => {
-            playSfx('click');
-            document.getElementById('ping-btn').innerText = "Pong!";
-            setTimeout(() => document.getElementById('ping-btn').innerText = "Ping Server", 1000);
-        });
-
-        // GPS Location
-        navigator.geolocation.getCurrentPosition(
-            (pos) => document.getElementById('loc-val').innerText = `${pos.coords.latitude.toFixed(2)}, ${pos.coords.longitude.toFixed(2)}`,
-            () => document.getElementById('loc-val').innerText = "Signal Lost"
-        );
-
-
-        // --- 2. System Initialization (LINK START) ---
-        async function startAR() {
-            playSfx('click');
-            document.getElementById('init-screen').style.display = 'none';
+            // Start Spatial Anchoring (Gyroscope)
+            initGyrosensor();
 
             // Start Camera
             const videoElement = document.getElementById('environment-video');
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
                 videoElement.srcObject = stream;
-                
-                // Initialize MediaPipe AI once camera is ready
-                initMediaPipe(videoElement);
+                // Wait for video meta to load so MediaPipe can use the actual dims
+                await new Promise(resolve => videoElement.onloadedmetadata = resolve);
+                // Initialize MediaPipe hand tracking and landmarks
+                initHandTracking(videoElement);
+                document.getElementById('gesture-status').style.display = 'block';
             } catch (err) {
-                alert("Camera access denied or unavailable.");
+                alert("Camera access denied or unavailable. AR functions will be limited.");
             }
-
-            // Start Spatial Anchoring (Gyroscope)
-            initGyrosensor();
+            
+            // Populate data
+            initDiagnosticData();
         }
 
-        // --- 3. Spatial Anchoring (3DoF Device Orientation) ---
+
+        // --- 2. Diagnostic Data & HP Bar ---
+        function initDiagnosticData() {
+            // Clock
+            setInterval(() => {
+                document.getElementById('clock').innerText = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'});
+            }, 1000);
+
+            // Battery (HP)
+            navigator.getBattery?.().then(battery => {
+                updateBattery(battery);
+                battery.addEventListener('levelchange', () => updateBattery(battery));
+                battery.addEventListener('chargingchange', () => updateBattery(battery));
+            });
+
+            function updateBattery(b) {
+                const level = Math.round(b.level * 100);
+                document.getElementById('hp-val').innerText = level;
+                document.getElementById('hp-bar-fill').style.width = level + '%';
+                
+                // Color levels just like SAO
+                const fill = document.getElementById('hp-bar-fill');
+                if (level > 50) {
+                    fill.style.background = 'var(--hp-green)';
+                    fill.style.boxShadow = '0 0 8px var(--hp-green)';
+                } else if (level > 20) {
+                    fill.style.background = 'var(--hp-yellow)';
+                    fill.style.boxShadow = '0 0 8px var(--hp-yellow)';
+                } else {
+                    fill.style.background = 'var(--hp-red)';
+                    fill.style.boxShadow = '0 0 8px var(--hp-red)';
+                }
+            }
+
+            // Tech Facts
+            const facts = [
+                "The first computers were actual human beings. It was a job title.",
+                "Fiber optic cables are about the width of human hair, but carry vast data.",
+                "GPS relies on a constellation of 24 to 32 satellites orbiting Earth.",
+                "Wi-Fi signals are actually radio waves, just higher frequency.",
+                "Your device memory (RAM) is billions of microscopic capacitors.",
+                "Moore's Law predicted that computing power would double every two years.",
+                "The internet is not a single entity; it's a network of millions of other networks."
+            ];
+            let factIdx = 0;
+            document.getElementById('next-fact-btn').addEventListener('click', (e) => {
+                playSfx('click');
+                factIdx = (factIdx + 1) % facts.length;
+                document.getElementById('fact-text').innerText = facts[factIdx];
+            });
+            document.getElementById('close-btn').addEventListener('click', closeSAOUI);
+
+            // Tech Details
+            document.getElementById('plat-val').innerText = `${navigator.platform}, ${window.innerWidth}x${window.innerHeight}`;
+            document.getElementById('mem-val').innerText = navigator.deviceMemory ? `${navigator.deviceMemory}GB+` : 'Unknown';
+            document.getElementById('core-val').innerText = navigator.hardwareConcurrency || 'Hidden';
+            document.getElementById('net-val').innerText = navigator.connection?.effectiveType || 'Offline';
+
+            navigator.geolocation.getCurrentPosition(
+                (pos) => document.getElementById('loc-val').innerText = `${pos.coords.latitude.toFixed(1)}, ${pos.coords.longitude.toFixed(1)}`,
+                () => document.getElementById('loc-val').innerText = "Signal Lost"
+            );
+        }
+
+
+        // --- 3. Spatial Anchoring (Gyrosensor 3DoF) ---
         let baseAlpha = null;
         function initGyrosensor() {
-            // Request permission for iOS 13+ devices
             if (typeof DeviceOrientationEvent.requestPermission === 'function') {
-                DeviceOrientationEvent.requestPermission().then(permissionState => {
-                    if (permissionState === 'granted') {
+                DeviceOrientationEvent.requestPermission().then(permission => {
+                    if (permission === 'granted') {
                         window.addEventListener('deviceorientation', handleOrientation);
                     }
                 }).catch(console.error);
             } else {
-                // Non-iOS devices
                 window.addEventListener('deviceorientation', handleOrientation);
             }
         }
 
+        const arAnchor = document.getElementById('ar-anchor');
         function handleOrientation(event) {
-            if (baseAlpha === null) baseAlpha = event.alpha; // Set physical zero point
-
-            // Calculate difference from starting position
-            let alpha = event.alpha - baseAlpha; 
-            let beta = event.beta - 90; // Adjust so holding phone upright is 0
-            let gamma = event.gamma;
-
-            // Apply inverse rotation to the UI container to make it "stick" in the real world
-            const arAnchor = document.getElementById('ar-anchor');
-            arAnchor.style.transform = `translateZ(-500px) rotateY(${-alpha}deg) rotateX(${-beta}deg) rotateZ(${-gamma}deg)`;
+            if (baseAlpha === null) baseAlpha = event.alpha; // Reset to face 'front'
+            
+            // Apply counter-rotation to make the UI "stick" in space
+            let alpha = event.alpha - baseAlpha; // Turning Y (Yaw)
+            let beta = event.beta - 90; // Pitch (up/down) - calibrated for upright phone
+            let gamma = event.gamma; // Roll (side to side)
+            
+            arAnchor.style.transform = `translateZ(-400px) rotateY(${-alpha}deg) rotateX(${-beta}deg) rotateZ(${-gamma}deg)`;
         }
 
 
-        // --- 4. MediaPipe Hand Tracking (AI Pinch to Click) ---
+        // --- 4. Hand Tracking, Gestures & Virtual Pointer ---
         const cursor = document.getElementById('ar-cursor');
+        const scene = document.getElementById('scene');
+        let uiIsOpen = false;
         let isPinching = false;
+        let pointGestureStartTime = null;
+        let pointGestureStartY = null;
 
-        function initMediaPipe(video) {
+        // UI Open/Close Animations
+        function openSAOUI() {
+            if (uiIsOpen) return;
+            playSfx('open');
+            uiIsOpen = true;
+            scene.style.display = 'block';
+            setTimeout(() => arAnchor.classList.add('show'), 50); // Delay for CSS transition
+            document.getElementById('gesture-status').innerText = 'Point & Pinch to interact';
+        }
+        function closeSAOUI() {
+            if (!uiIsOpen) return;
+            playSfx('close');
+            uiIsOpen = false;
+            arAnchor.classList.remove('show');
+            setTimeout(() => {
+                if(!uiIsOpen) scene.style.display = 'none';
+            }, 500); // Wait for transition
+            document.getElementById('gesture-status').innerText = 'Point & Swipe down to open UI';
+        }
+
+        function initHandTracking(video) {
             const hands = new Hands({locateFile: (file) => {
                 return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
             }});
@@ -343,77 +511,7 @@
             hands.setOptions({
                 maxNumHands: 1,
                 modelComplexity: 1,
-                minDetectionConfidence: 0.7,
-                minTrackingConfidence: 0.7
+                minDetectionConfidence: 0.8,
+                minTrackingConfidence: 0.8
             });
-            
-            hands.onResults(onHandResults);
-            
-            // Loop camera feed into MediaPipe
-            const camera = new Camera(video, {
-                onFrame: async () => {
-                    await hands.send({image: video});
-                },
-                width: 640,
-                height: 480
-            });
-            camera.start();
-        }
-
-        function onHandResults(results) {
-            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-                cursor.style.display = 'block';
-                const landmarks = results.multiHandLandmarks[0];
-                
-                // Get Index Tip (8) and Thumb Tip (4)
-                const indexTip = landmarks[8];
-                const thumbTip = landmarks[4];
-
-                // Map MediaPipe normalized coordinates (0 to 1) to screen pixels
-                // Note: The camera image is mirrored or scaled, so we map directly to window size
-                const screenX = indexTip.x * window.innerWidth;
-                const screenY = indexTip.y * window.innerHeight;
-
-                cursor.style.left = `${screenX}px`;
-                cursor.style.top = `${screenY}px`;
-
-                // Calculate distance between thumb and index for PINCH
-                const distance = Math.hypot(indexTip.x - thumbTip.x, indexTip.y - thumbTip.y);
-                
-                // Threshold for a pinch
-                if (distance < 0.05 && !isPinching) {
-                    isPinching = true;
-                    cursor.classList.add('pinched');
-                    triggerVirtualClick(screenX, screenY);
-                } else if (distance > 0.08) {
-                    isPinching = false;
-                    cursor.classList.remove('pinched');
-                }
-            } else {
-                cursor.style.display = 'none';
-            }
-        }
-
-        function triggerVirtualClick(x, y) {
-            // Temporarily hide cursor so it doesn't block the element underneath
-            cursor.style.display = 'none'; 
-            
-            // Find what widget/button is at the physical coordinates of the pinch
-            const element = document.elementFromPoint(x, y);
-            
-            if (element) {
-                // If the element or its parent is a button, trigger a click event
-                if (element.tagName === 'BUTTON' || element.classList.contains('sao-btn')) {
-                    element.click();
-                    // Add visual feedback
-                    element.classList.add('active-click');
-                    setTimeout(() => element.classList.remove('active-click'), 200);
-                }
-            }
-            // Restore cursor
-            cursor.style.display = 'block';
-        }
-    </script>
-</body>
-</html>
-
+     
