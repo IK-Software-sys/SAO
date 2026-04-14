@@ -6,6 +6,7 @@
     <title>SAO AR Mobile Interface</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
     
     <style>
@@ -37,223 +38,103 @@
             height: 100vh;
         }
 
-        /* 1. Environment and Landmark Canvas */
         #environment-video {
-            position: absolute;
-            top: 0; left: 0; width: 100%; height: 100%;
-            object-fit: cover;
-            z-index: 1;
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            object-fit: cover; z-index: 1;
         }
         #landmarks-canvas {
-            position: absolute;
-            top: 0; left: 0; width: 100%; height: 100%;
-            z-index: 2;
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 2;
         }
 
-        /* 2. Calibration & Link Start */
         #calibration-screen {
-            position: absolute;
-            top: 0; left: 0; width: 100vw; height: 100vh;
-            background: rgba(0,0,0,0.9);
-            z-index: 1000;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            flex-direction: column;
-            color: #fff;
+            position: absolute; top: 0; left: 0; width: 100vw; height: 100vh;
+            background: rgba(0,0,0,0.9); z-index: 1000;
+            display: flex; justify-content: center; align-items: center; flex-direction: column; color: #fff;
         }
 
         #link-start-btn {
-            background: transparent;
-            border: 2px solid var(--sao-orange);
-            color: var(--sao-orange);
-            font-size: 2rem;
-            padding: 15px 40px;
-            font-family: 'Rajdhani', sans-serif;
-            text-transform: uppercase;
-            cursor: pointer;
-            box-shadow: 0 0 15px rgba(255, 157, 0, 0.5);
-            transition: all 0.3s;
+            background: transparent; border: 2px solid var(--sao-orange); color: var(--sao-orange);
+            font-size: 2rem; padding: 15px 40px; text-transform: uppercase; cursor: pointer;
+            box-shadow: 0 0 15px rgba(255, 157, 0, 0.5); transition: all 0.3s;
         }
 
-        #link-start-btn:active {
-            background: var(--sao-orange);
-            color: #fff;
-        }
+        #link-start-btn:active { background: var(--sao-orange); color: #fff; }
 
-        /* 3. AR Floating Scene and Shadows */
         #scene {
-            position: absolute;
-            top: 0; left: 0;
-            width: 100vw; height: 100vh;
-            perspective: 800px;
-            z-index: 10;
-            pointer-events: none; /* Let clicks pass through to UI behind */
-            display: none; /* Hidden until gesture is detected */
+            position: absolute; top: 0; left: 0; width: 100vw; height: 100vh;
+            perspective: 800px; z-index: 10; pointer-events: none; display: none;
         }
 
-        /* This container rotates on X, Y, Z to stay locked in physical space */
         #ar-anchor {
-            position: absolute;
-            top: 50%; left: 50%;
-            width: 100%; height: 100%;
-            /* translateZ places the entire thing deep inside the physical world */
-            transform: translateZ(-400px); 
-            transform-style: preserve-3d;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            transition: transform 0.1s linear, opacity 0.5s ease;
-            opacity: 0;
-            pointer-events: auto; /* Re-enable pointer events for the UI */
+            position: absolute; top: 50%; left: 50%; width: 100%; height: 100%;
+            transform: translateZ(-400px); transform-style: preserve-3d;
+            display: flex; justify-content: center; align-items: center;
+            transition: transform 0.1s linear, opacity 0.5s ease; opacity: 0; pointer-events: auto;
         }
         
-        #ar-anchor.show {
-            opacity: 1;
-        }
+        #ar-anchor.show { opacity: 1; }
 
-        /* This large container collects the overall shadow, providing significant depth */
         #ui-composed-shadow {
-            position: absolute;
-            width: 400px; height: 600px;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 20px;
-            /* Drop shadow simulates the UI casting a shadow behind it in space */
-            filter: drop-shadow(10px 50px 30px rgba(0,0,0,0.5));
-            transform-style: preserve-3d;
+            position: absolute; width: 400px; height: 600px;
+            display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: 20px;
+            filter: drop-shadow(10px 50px 30px rgba(0,0,0,0.5)); transform-style: preserve-3d;
         }
 
-        /* 4. Circular Glass Widgets */
         .glass-panel {
-            background: var(--sao-bg);
-            backdrop-filter: blur(10px);
-            -webkit-backdrop-filter: blur(10px);
-            border: 1px solid rgba(255,255,255,0.6);
-            color: var(--sao-dark);
-            box-shadow: inset 0 0 10px rgba(255,255,255,0.5);
-            width: 170px;
-            height: 170px;
-            border-radius: 50%;
-            padding: 20px;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            transform-style: preserve-3d;
-            transition: all 0.2s ease;
+            background: var(--sao-bg); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.6); color: var(--sao-dark);
+            box-shadow: inset 0 0 10px rgba(255,255,255,0.5); width: 170px; height: 170px;
+            border-radius: 50%; padding: 20px; display: flex; flex-direction: column;
+            justify-content: center; align-items: center; transform-style: preserve-3d;
         }
 
         .panel-header {
-            font-size: 1rem;
-            font-weight: bold;
-            color: var(--sao-orange);
-            text-transform: uppercase;
-            border-bottom: 2px solid var(--sao-orange);
-            margin-bottom: 10px;
-            text-align: center;
-            width: 100%;
+            font-size: 1rem; font-weight: bold; color: var(--sao-orange); text-transform: uppercase;
+            border-bottom: 2px solid var(--sao-orange); margin-bottom: 10px; text-align: center; width: 100%;
         }
 
-        .info-list {
-            list-style: none;
-            width: 100%;
-            text-align: center;
-        }
-
-        .info-item {
-            display: flex;
-            justify-content: space-between;
-            font-size: 0.85rem;
-            margin-bottom: 3px;
-        }
+        .info-list { list-style: none; width: 100%; text-align: center; }
+        .info-item { display: flex; justify-content: space-between; font-size: 0.85rem; margin-bottom: 3px; }
         .info-item.val { color: var(--sao-orange); font-weight: 700; }
 
-        /* HP Battery Bar - Themed */
         #hp-bar-outer {
-            width: 100%; height: 12px;
-            background: rgba(0,0,0,0.6);
-            border: 1px solid rgba(255,255,255,0.5);
-            border-radius: 2px;
-            overflow: hidden;
-            clip-path: polygon(0 0, 100% 0, 95% 100%, 0 100%);
-            margin-bottom: 3px;
+            width: 100%; height: 12px; background: rgba(0,0,0,0.6); border: 1px solid rgba(255,255,255,0.5);
+            border-radius: 2px; overflow: hidden; clip-path: polygon(0 0, 100% 0, 95% 100%, 0 100%); margin-bottom: 3px;
         }
         #hp-bar-fill {
-            height: 100%; width: 100%;
-            background: var(--hp-green);
-            box-shadow: 0 0 8px var(--hp-green);
+            height: 100%; width: 100%; background: var(--hp-green); box-shadow: 0 0 8px var(--hp-green);
             transition: width 0.5s ease, background 0.5s ease, box-shadow 0.5s ease;
         }
 
-        /* Text Fact Display */
-        #fact-text {
-            font-size: 0.85rem;
-            text-align: center;
-            margin-bottom: 8px;
-            height: 50px;
-            overflow: hidden;
-        }
+        #fact-text { font-size: 0.85rem; text-align: center; margin-bottom: 8px; height: 50px; overflow: hidden; }
         
-        /* Interactive Buttons */
         .sao-btn {
-            display: inline-block;
-            background: #eee;
-            border: 1px solid #aaa;
-            padding: 5px 12px;
-            cursor: pointer;
-            border-radius: 2px;
-            text-transform: uppercase;
-            font-weight: bold;
+            display: inline-block; background: #eee; border: 1px solid #aaa; padding: 5px 12px;
+            cursor: pointer; border-radius: 2px; text-transform: uppercase; font-weight: bold;
         }
         .sao-btn:hover, .sao-btn.hover {
-            background: var(--sao-orange);
-            color: white;
-            border-color: white;
-            box-shadow: 0 0 10px var(--sao-orange);
+            background: var(--sao-orange); color: white; border-color: white; box-shadow: 0 0 10px var(--sao-orange);
         }
 
-        /* 5. AR Virtual Cursor (Driven by hand landmarks) */
         #ar-cursor {
-            position: absolute;
-            width: 25px; height: 25px;
-            border: 2px solid #00ff00;
-            border-radius: 50%;
-            transform: translate(-50%, -50%);
-            z-index: 500;
-            pointer-events: none;
-            display: none;
-            box-shadow: 0 0 10px #00ff00;
-            transition: transform 0.1s ease;
+            position: absolute; width: 25px; height: 25px; border: 2px solid #00ff00; border-radius: 50%;
+            transform: translate(-50%, -50%); z-index: 500; pointer-events: none; display: none;
+            box-shadow: 0 0 10px #00ff00; transition: transform 0.1s ease;
         }
-        
         #ar-cursor::after {
-            content: '';
-            position: absolute; top: 50%; left: 50%;
-            width: 5px; height: 5px;
-            background: #00ff00;
-            border-radius: 50%;
-            transform: translate(-50%, -50%);
+            content: ''; position: absolute; top: 50%; left: 50%; width: 5px; height: 5px;
+            background: #00ff00; border-radius: 50%; transform: translate(-50%, -50%);
         }
 
-        .pinched {
-            background: rgba(0, 255, 0, 0.4);
-            transform: translate(-50%, -50%) scale(0.7) !important;
-        }
+        .pinched { background: rgba(0, 255, 0, 0.4); transform: translate(-50%, -50%) scale(0.7) !important; }
         
-        /* Status Text for Gesture Help */
         #gesture-status {
-            position: absolute;
-            bottom: 20px; left: 50%;
-            transform: translateX(-50%);
-            color: rgba(255,255,255,0.7);
-            background: rgba(0,0,0,0.5);
-            padding: 5px 15px;
-            border-radius: 50px;
-            z-index: 50;
-            display: none;
+            position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+            color: rgba(255,255,255,0.7); background: rgba(0,0,0,0.5); padding: 5px 15px; border-radius: 50px;
+            z-index: 50; display: none;
+        }
+        #error-log {
+            color: red; font-size: 0.8rem; margin-top: 10px; max-width: 80%; text-align: center;
         }
 
     </style>
@@ -266,18 +147,16 @@
     <div id="calibration-screen">
         <h2 style="margin-bottom: 20px; text-shadow: 0 0 10px var(--sao-orange);">NEVEGEAR CALIBRATION</h2>
         <button id="link-start-btn" onclick="startCalibration()">LINK START</button>
-        <p style="margin-top: 20px; font-size: 0.9rem; opacity: 0.7;">Requires Camera & Gyroscope permissions.</p>
+        <p style="margin-top: 20px; font-size: 0.9rem; opacity: 0.7;">Requires HTTPS, Camera, and Sensors.</p>
+        <p id="error-log"></p>
     </div>
 
     <div id="gesture-status">POINT & SWIPE DOWN to open UI</div>
-
     <div id="ar-cursor"></div>
 
     <div id="scene">
         <div id="ar-anchor">
-            
             <div id="ui-composed-shadow">
-
                 <div class="glass-panel">
                     <div class="panel-header">Status</div>
                     <div id="hp-bar-outer"><div id="hp-bar-fill"></div></div>
@@ -289,10 +168,10 @@
                 <div class="glass-panel">
                     <div class="panel-header">Diagnostics</div>
                     <ul class="info-list">
-                        <li class="info-item"><span>Device Mem:</span><span id="mem-val" class="val">--</span></li>
-                        <li class="info-item"><span>CPU Cores:</span><span id="core-val" class="val">--</span></li>
-                        <li class="info-item"><span>Network:</span><span id="net-val" class="val">--</span></li>
-                        <li class="info-item"><span>Location:</span><span id="loc-val" class="val">--</span></li>
+                        <li class="info-item"><span>Mem:</span><span id="mem-val" class="val">--</span></li>
+                        <li class="info-item"><span>Cores:</span><span id="core-val" class="val">--</span></li>
+                        <li class="info-item"><span>Net:</span><span id="net-val" class="val">--</span></li>
+                        <li class="info-item"><span>Loc:</span><span id="loc-val" class="val">--</span></li>
                     </ul>
                 </div>
 
@@ -305,9 +184,7 @@
                 <div class="glass-panel" style="width: 100px; height: 100px;">
                     <button class="sao-btn" id="close-btn" style="border-radius: 50px;">Close</button>
                 </div>
-
             </div>
-
         </div>
     </div>
 
@@ -320,122 +197,90 @@
             
             const osc = audioCtx.createOscillator();
             const gain = audioCtx.createGain();
-            osc.connect(gain);
-            gain.connect(audioCtx.destination);
+            osc.connect(gain); gain.connect(audioCtx.destination);
             const now = audioCtx.currentTime;
 
             if (type === 'open') {
-                // Rising triple chime
-                osc.type = 'square';
-                osc.frequency.setValueAtTime(500, now);
-                osc.frequency.setValueAtTime(800, now + 0.05);
-                osc.frequency.setValueAtTime(1200, now + 0.1);
-                gain.gain.setValueAtTime(0.1, now);
-                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
-                osc.start(now);
-                osc.stop(now + 0.3);
+                osc.type = 'square'; osc.frequency.setValueAtTime(500, now);
+                osc.frequency.setValueAtTime(800, now + 0.05); osc.frequency.setValueAtTime(1200, now + 0.1);
+                gain.gain.setValueAtTime(0.1, now); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+                osc.start(now); osc.stop(now + 0.3);
             } else if (type === 'close') {
-                // Deeper double tone
-                osc.type = 'sawtooth';
-                osc.frequency.setValueAtTime(800, now);
-                osc.frequency.setValueAtTime(600, now + 0.05);
-                gain.gain.setValueAtTime(0.1, now);
-                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
-                osc.start(now);
-                osc.stop(now + 0.2);
+                osc.type = 'sawtooth'; osc.frequency.setValueAtTime(800, now);
+                osc.frequency.setValueAtTime(600, now + 0.05); gain.gain.setValueAtTime(0.1, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2); osc.start(now); osc.stop(now + 0.2);
             } else if (type === 'click') {
-                // Metallic tap
-                osc.type = 'sine';
-                osc.frequency.setValueAtTime(2000, now);
-                osc.frequency.exponentialRampToValueAtTime(800, now + 0.05);
-                gain.gain.setValueAtTime(0.3, now);
-                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.05);
-                osc.start(now);
-                osc.stop(now + 0.05);
+                osc.type = 'sine'; osc.frequency.setValueAtTime(2000, now);
+                osc.frequency.exponentialRampToValueAtTime(800, now + 0.05); gain.gain.setValueAtTime(0.3, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.05); osc.start(now); osc.stop(now + 0.05);
             }
         }
-    </script>
 
-    <script>
-        // --- 1. System Initialisation (LINK START) ---
+        // --- Core Application Logic ---
+        function logError(msg) {
+            document.getElementById('error-log').innerText = msg;
+            console.error(msg);
+        }
+
         async function startCalibration() {
             playSfx('click');
-            document.getElementById('calibration-screen').style.display = 'none';
-
-            // Start Spatial Anchoring (Gyroscope)
-            initGyrosensor();
+            
+            // Start Sensors (Gyroscope + Accelerometer fallback)
+            initSensors();
 
             // Start Camera
             const videoElement = document.getElementById('environment-video');
             try {
+                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                    throw new Error("getUserMedia not supported (requires HTTPS)");
+                }
                 const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
                 videoElement.srcObject = stream;
-                // Wait for video meta to load so MediaPipe can use the actual dims
+                
                 await new Promise(resolve => videoElement.onloadedmetadata = resolve);
-                // Initialize MediaPipe hand tracking and landmarks
-                initHandTracking(videoElement);
+                document.getElementById('calibration-screen').style.display = 'none';
                 document.getElementById('gesture-status').style.display = 'block';
+
+                initHandTracking(videoElement);
+                initDiagnosticData();
             } catch (err) {
-                alert("Camera access denied or unavailable. AR functions will be limited.");
+                logError("Camera Error: " + err.message + ". Please ensure you are using HTTPS on mobile.");
             }
-            
-            // Populate data
-            initDiagnosticData();
         }
 
-
-        // --- 2. Diagnostic Data & HP Bar ---
+        // --- Data Widgets ---
         function initDiagnosticData() {
-            // Clock
             setInterval(() => {
                 document.getElementById('clock').innerText = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'});
             }, 1000);
 
-            // Battery (HP)
-            navigator.getBattery?.().then(battery => {
-                updateBattery(battery);
-                battery.addEventListener('levelchange', () => updateBattery(battery));
-                battery.addEventListener('chargingchange', () => updateBattery(battery));
+            navigator.getBattery?.().then(b => {
+                updateBattery(b);
+                b.addEventListener('levelchange', () => updateBattery(b));
             });
 
             function updateBattery(b) {
                 const level = Math.round(b.level * 100);
                 document.getElementById('hp-val').innerText = level;
-                document.getElementById('hp-bar-fill').style.width = level + '%';
-                
-                // Color levels just like SAO
                 const fill = document.getElementById('hp-bar-fill');
-                if (level > 50) {
-                    fill.style.background = 'var(--hp-green)';
-                    fill.style.boxShadow = '0 0 8px var(--hp-green)';
-                } else if (level > 20) {
-                    fill.style.background = 'var(--hp-yellow)';
-                    fill.style.boxShadow = '0 0 8px var(--hp-yellow)';
-                } else {
-                    fill.style.background = 'var(--hp-red)';
-                    fill.style.boxShadow = '0 0 8px var(--hp-red)';
-                }
+                fill.style.width = level + '%';
+                if (level > 50) { fill.style.background = 'var(--hp-green)'; fill.style.boxShadow = '0 0 8px var(--hp-green)'; } 
+                else if (level > 20) { fill.style.background = 'var(--hp-yellow)'; fill.style.boxShadow = '0 0 8px var(--hp-yellow)'; } 
+                else { fill.style.background = 'var(--hp-red)'; fill.style.boxShadow = '0 0 8px var(--hp-red)'; }
             }
 
-            // Tech Facts
             const facts = [
                 "The first computers were actual human beings. It was a job title.",
                 "Fiber optic cables are about the width of human hair, but carry vast data.",
-                "GPS relies on a constellation of 24 to 32 satellites orbiting Earth.",
-                "Wi-Fi signals are actually radio waves, just higher frequency.",
-                "Your device memory (RAM) is billions of microscopic capacitors.",
-                "Moore's Law predicted that computing power would double every two years.",
-                "The internet is not a single entity; it's a network of millions of other networks."
+                "GPS relies on a constellation of 24 to 32 satellites orbiting Earth."
             ];
             let factIdx = 0;
-            document.getElementById('next-fact-btn').addEventListener('click', (e) => {
-                playSfx('click');
-                factIdx = (factIdx + 1) % facts.length;
+            document.getElementById('next-fact-btn').addEventListener('click', () => {
+                playSfx('click'); factIdx = (factIdx + 1) % facts.length;
                 document.getElementById('fact-text').innerText = facts[factIdx];
             });
             document.getElementById('close-btn').addEventListener('click', closeSAOUI);
 
-            // Tech Details
             document.getElementById('plat-val').innerText = `${navigator.platform}, ${window.innerWidth}x${window.innerHeight}`;
             document.getElementById('mem-val').innerText = navigator.deviceMemory ? `${navigator.deviceMemory}GB+` : 'Unknown';
             document.getElementById('core-val').innerText = navigator.hardwareConcurrency || 'Hidden';
@@ -447,35 +292,59 @@
             );
         }
 
-
-        // --- 3. Spatial Anchoring (Gyrosensor 3DoF) ---
+        // --- SENSORS: Gyroscope & Accelerometer Fallback ---
         let baseAlpha = null;
-        function initGyrosensor() {
+        let usingGyro = false;
+        const arAnchor = document.getElementById('ar-anchor');
+
+        function initSensors() {
+            // iOS 13+ requires explicit permission
             if (typeof DeviceOrientationEvent.requestPermission === 'function') {
                 DeviceOrientationEvent.requestPermission().then(permission => {
-                    if (permission === 'granted') {
-                        window.addEventListener('deviceorientation', handleOrientation);
-                    }
-                }).catch(console.error);
+                    if (permission === 'granted') attachSensorListeners();
+                }).catch(e => logError("Sensor permission denied."));
             } else {
-                window.addEventListener('deviceorientation', handleOrientation);
+                attachSensorListeners();
             }
         }
 
-        const arAnchor = document.getElementById('ar-anchor');
-        function handleOrientation(event) {
-            if (baseAlpha === null) baseAlpha = event.alpha; // Reset to face 'front'
-            
-            // Apply counter-rotation to make the UI "stick" in space
-            let alpha = event.alpha - baseAlpha; // Turning Y (Yaw)
-            let beta = event.beta - 90; // Pitch (up/down) - calibrated for upright phone
-            let gamma = event.gamma; // Roll (side to side)
-            
+        function attachSensorListeners() {
+            // Gyroscope Listener
+            window.addEventListener('deviceorientation', (event) => {
+                if (event.alpha !== null) {
+                    usingGyro = true;
+                    if (baseAlpha === null) baseAlpha = event.alpha;
+                    let alpha = event.alpha - baseAlpha;
+                    let beta = event.beta - 90; // Adjust for upright phone
+                    let gamma = event.gamma;
+                    updateUIAnchor(alpha, beta, gamma);
+                }
+            });
+
+            // Accelerometer Fallback Listener
+            window.addEventListener('devicemotion', (event) => {
+                if (usingGyro) return; // Skip if gyro is working
+                const acc = event.accelerationIncludingGravity;
+                if (acc && acc.x !== null) {
+                    // Calculate pitch and roll from gravity vector
+                    let ax = acc.x, ay = acc.y, az = acc.z;
+                    
+                    // Web formula for deriving tilt from gravity
+                    let pitch = Math.atan2(ay, Math.sqrt(ax * ax + az * az)) * (180 / Math.PI);
+                    let roll = Math.atan2(-ax, az) * (180 / Math.PI);
+                    
+                    // Accelerometer cannot detect compass yaw, so alpha is 0
+                    updateUIAnchor(0, pitch - 90, roll);
+                }
+            });
+        }
+
+        function updateUIAnchor(alpha, beta, gamma) {
             arAnchor.style.transform = `translateZ(-400px) rotateY(${-alpha}deg) rotateX(${-beta}deg) rotateZ(${-gamma}deg)`;
         }
 
 
-        // --- 4. Hand Tracking, Gestures & Virtual Pointer ---
+        // --- Hand Tracking & Gestures ---
         const cursor = document.getElementById('ar-cursor');
         const scene = document.getElementById('scene');
         let uiIsOpen = false;
@@ -483,35 +352,61 @@
         let pointGestureStartTime = null;
         let pointGestureStartY = null;
 
-        // UI Open/Close Animations
         function openSAOUI() {
             if (uiIsOpen) return;
-            playSfx('open');
-            uiIsOpen = true;
-            scene.style.display = 'block';
-            setTimeout(() => arAnchor.classList.add('show'), 50); // Delay for CSS transition
+            playSfx('open'); uiIsOpen = true; scene.style.display = 'block';
+            setTimeout(() => arAnchor.classList.add('show'), 50);
             document.getElementById('gesture-status').innerText = 'Point & Pinch to interact';
         }
         function closeSAOUI() {
             if (!uiIsOpen) return;
-            playSfx('close');
-            uiIsOpen = false;
-            arAnchor.classList.remove('show');
-            setTimeout(() => {
-                if(!uiIsOpen) scene.style.display = 'none';
-            }, 500); // Wait for transition
+            playSfx('close'); uiIsOpen = false; arAnchor.classList.remove('show');
+            setTimeout(() => { if(!uiIsOpen) scene.style.display = 'none'; }, 500);
             document.getElementById('gesture-status').innerText = 'Point & Swipe down to open UI';
         }
 
         function initHandTracking(video) {
-            const hands = new Hands({locateFile: (file) => {
-                return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
-            }});
+            const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
+            hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.7, minTrackingConfidence: 0.7 });
+            hands.onResults(onHandResults);
+            const camera = new Camera(video, { onFrame: async () => { await hands.send({image: video}); }, width: 640, height: 480 });
+            camera.start();
+        }
+
+        const canvasElement = document.getElementById('landmarks-canvas');
+        const canvasCtx = canvasElement.getContext('2d');
+
+        function onHandResults(results) {
+            canvasCtx.save();
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            canvasElement.width = window.innerWidth;
+            canvasElement.height = window.innerHeight;
             
-            hands.setOptions({
-                maxNumHands: 1,
-                modelComplexity: 1,
-                minDetectionConfidence: 0.8,
-                minTrackingConfidence: 0.8
-            });
-     
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const landmarks = results.multiHandLandmarks[0];
+                
+                // Draw landmarks using the newly added drawing_utils
+                if (typeof drawConnectors !== 'undefined') {
+                    drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {color: 'rgba(255,157,0,0.5)', lineWidth: 5});
+                    drawLandmarks(canvasCtx, landmarks, {color: '#ffffff', lineWidth: 2, radius: 4});
+                }
+                
+                // Map coordinates
+                const screenX = landmarks[8].x * window.innerWidth;
+                const screenY = landmarks[8].y * window.innerHeight;
+
+                // --- Gesture: Swipe Down ---
+                const isPointing = (landmarks[8].y < landmarks[6].y && landmarks[12].y > landmarks[10].y);
+                const isHandOpen = (landmarks[8].y < landmarks[6].y && landmarks[12].y < landmarks[10].y);
+
+                if (isPointing && !isHandOpen) {
+                    const currentTime = Date.now();
+                    const indexTipY = landmarks[8].y;
+
+                    if (pointGestureStartTime === null && indexTipY < 0.3) {
+                        pointGestureStartTime = currentTime; pointGestureStartY = indexTipY;
+                    } else if (pointGestureStartTime !== null) {
+                        const duration = currentTime - pointGestureStartTime;
+                        const deltaY = indexTipY - pointGestureStartY;
+                        
+                        if (deltaY > 0.4 && dura
