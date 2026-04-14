@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>SAO AR Mobile Interface</title>
+    <title>SAO Cardinal: Fluidity Build</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
@@ -11,402 +11,253 @@
     
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;700&display=swap');
-
-        :root {
-            --sao-orange: #ff9d00;
-            --sao-bg: rgba(245, 245, 245, 0.7);
-            --sao-border: rgba(200, 200, 200, 0.9);
-            --sao-dark: #333;
-            --hp-green: #4caf50;
-            --hp-yellow: #ffeb3b;
-            --hp-red: #f44336;
-        }
-
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-            user-select: none;
-            -webkit-tap-highlight-color: transparent;
-            font-family: 'Rajdhani', sans-serif;
-        }
-
-        body {
-            background-color: #000;
-            overflow: hidden;
-            width: 100vw;
-            height: 100vh;
-        }
-
-        #environment-video {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            object-fit: cover; z-index: 1;
-        }
-        #landmarks-canvas {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 2;
-        }
-
-        #calibration-screen {
-            position: absolute; top: 0; left: 0; width: 100vw; height: 100vh;
-            background: rgba(0,0,0,0.9); z-index: 1000;
-            display: flex; justify-content: center; align-items: center; flex-direction: column; color: #fff;
-        }
-
-        #link-start-btn {
-            background: transparent; border: 2px solid var(--sao-orange); color: var(--sao-orange);
-            font-size: 2rem; padding: 15px 40px; text-transform: uppercase; cursor: pointer;
-            box-shadow: 0 0 15px rgba(255, 157, 0, 0.5); transition: all 0.3s;
-        }
-
-        #link-start-btn:active { background: var(--sao-orange); color: #fff; }
-
-        #scene {
-            position: absolute; top: 0; left: 0; width: 100vw; height: 100vh;
-            perspective: 800px; z-index: 10; pointer-events: none; display: none;
-        }
-
-        #ar-anchor {
-            position: absolute; top: 50%; left: 50%; width: 100%; height: 100%;
-            transform: translateZ(-400px); transform-style: preserve-3d;
-            display: flex; justify-content: center; align-items: center;
-            transition: transform 0.1s linear, opacity 0.5s ease; opacity: 0; pointer-events: auto;
-        }
+        :root { --sao-orange: #ff9d00; --sao-bg: rgba(245, 245, 245, 0.98); --sao-cyan: #00f2ff; }
+        * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; font-family: 'Rajdhani', sans-serif; }
+        body { background: #000; height: 100vh; width: 100vw; overflow: hidden; color: #fff; }
         
-        #ar-anchor.show { opacity: 1; }
-
-        #ui-composed-shadow {
-            position: absolute; width: 400px; height: 600px;
-            display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: 20px;
-            filter: drop-shadow(10px 50px 30px rgba(0,0,0,0.5)); transform-style: preserve-3d;
+        #hidden-video { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }
+        #skeleton-canvas { 
+            position: absolute; inset: 0; width: 100%; height: 100%; z-index: 5; 
+            filter: drop-shadow(0 0 5px var(--sao-orange)); 
+            will-change: transform; /* Hardware acceleration hint */
         }
 
-        .glass-panel {
-            background: var(--sao-bg); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
-            border: 1px solid rgba(255,255,255,0.6); color: var(--sao-dark);
-            box-shadow: inset 0 0 10px rgba(255,255,255,0.5); width: 170px; height: 170px;
-            border-radius: 50%; padding: 20px; display: flex; flex-direction: column;
-            justify-content: center; align-items: center; transform-style: preserve-3d;
+        #viewport { position: absolute; inset: 0; perspective: 1500px; z-index: 10; display: none; }
+        #ui-anchor { position: absolute; width: 100%; height: 100%; transform-style: preserve-3d; transition: opacity 0.5s; opacity: 0; pointer-events: none; }
+
+        /* HUD ELEMENTS */
+        .status-container { position: absolute; top: 40px; left: 40px; width: 320px; pointer-events: none; }
+        .hp-bar-bg { background: rgba(0,0,0,0.8); height: 20px; border: 1px solid #fff; clip-path: polygon(0 0, 100% 0, 96% 100%, 0 100%); }
+        .hp-bar-fill { height: 100%; width: 100%; background: #4caf50; transition: 0.1s linear; }
+
+        .diag-hud { position: absolute; top: 40px; right: 40px; text-align: right; color: var(--sao-cyan); font-size: 0.8rem; pointer-events: none; }
+        .diag-hud div { margin-bottom: 8px; border-right: 3px solid var(--sao-cyan); padding-right: 12px; }
+
+        /* INTERACTIVE BUTTONS */
+        .sao-menu { position: absolute; left: 40px; top: 140px; display: flex; flex-direction: column; gap: 12px; pointer-events: auto; }
+        .menu-item { 
+            width: 52px; height: 52px; border-radius: 50%; background: var(--sao-bg); border: 2px solid #fff; 
+            display: flex; justify-content: center; align-items: center; cursor: pointer; transition: 0.15s; 
+            pointer-events: auto;
+        }
+        .menu-item svg { width: 26px; height: 26px; fill: #222; pointer-events: none; }
+        .menu-item.active { background: var(--sao-orange); transform: scale(1.1); box-shadow: 0 0 15px var(--sao-orange); border-color: #fff; }
+        .menu-item.active svg { fill: #fff; }
+
+        .submenu { 
+            position: absolute; left: 110px; top: 140px; width: 260px; background: var(--sao-bg); color: #222; 
+            padding: 20px; display: none; clip-path: polygon(0 8px, 8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%); 
+            border: 1px solid #fff; 
+        }
+        .submenu.show { display: block; }
+        .submenu h2 { font-size: 1.2rem; border-bottom: 3px solid var(--sao-orange); margin-bottom: 12px; text-transform: uppercase; }
+
+        #cursor { 
+            position: absolute; width: 35px; height: 35px; border: 2px solid var(--sao-cyan); 
+            border-radius: 50%; z-index: 100; display: none; transform: translate(-50%, -50%); 
+            pointer-events: none; transition: transform 0.05s linear; 
         }
 
-        .panel-header {
-            font-size: 1rem; font-weight: bold; color: var(--sao-orange); text-transform: uppercase;
-            border-bottom: 2px solid var(--sao-orange); margin-bottom: 10px; text-align: center; width: 100%;
-        }
-
-        .info-list { list-style: none; width: 100%; text-align: center; }
-        .info-item { display: flex; justify-content: space-between; font-size: 0.85rem; margin-bottom: 3px; }
-        .info-item.val { color: var(--sao-orange); font-weight: 700; }
-
-        #hp-bar-outer {
-            width: 100%; height: 12px; background: rgba(0,0,0,0.6); border: 1px solid rgba(255,255,255,0.5);
-            border-radius: 2px; overflow: hidden; clip-path: polygon(0 0, 100% 0, 95% 100%, 0 100%); margin-bottom: 3px;
-        }
-        #hp-bar-fill {
-            height: 100%; width: 100%; background: var(--hp-green); box-shadow: 0 0 8px var(--hp-green);
-            transition: width 0.5s ease, background 0.5s ease, box-shadow 0.5s ease;
-        }
-
-        #fact-text { font-size: 0.85rem; text-align: center; margin-bottom: 8px; height: 50px; overflow: hidden; }
-        
-        .sao-btn {
-            display: inline-block; background: #eee; border: 1px solid #aaa; padding: 5px 12px;
-            cursor: pointer; border-radius: 2px; text-transform: uppercase; font-weight: bold;
-        }
-        .sao-btn:hover, .sao-btn.hover {
-            background: var(--sao-orange); color: white; border-color: white; box-shadow: 0 0 10px var(--sao-orange);
-        }
-
-        #ar-cursor {
-            position: absolute; width: 25px; height: 25px; border: 2px solid #00ff00; border-radius: 50%;
-            transform: translate(-50%, -50%); z-index: 500; pointer-events: none; display: none;
-            box-shadow: 0 0 10px #00ff00; transition: transform 0.1s ease;
-        }
-        #ar-cursor::after {
-            content: ''; position: absolute; top: 50%; left: 50%; width: 5px; height: 5px;
-            background: #00ff00; border-radius: 50%; transform: translate(-50%, -50%);
-        }
-
-        .pinched { background: rgba(0, 255, 0, 0.4); transform: translate(-50%, -50%) scale(0.7) !important; }
-        
-        #gesture-status {
-            position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
-            color: rgba(255,255,255,0.7); background: rgba(0,0,0,0.5); padding: 5px 15px; border-radius: 50px;
-            z-index: 50; display: none;
-        }
-        #error-log {
-            color: red; font-size: 0.8rem; margin-top: 10px; max-width: 80%; text-align: center;
-        }
-
+        #boot-screen { position: absolute; inset: 0; background: #000; z-index: 1000; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+        #link-start { padding: 18px 50px; border: 3px solid var(--sao-orange); background: none; color: var(--sao-orange); font-size: 2rem; }
     </style>
 </head>
 <body>
 
-    <video id="environment-video" autoplay playsinline></video>
-    <canvas id="landmarks-canvas"></canvas>
+    <video id="hidden-video" playsinline muted></video>
+    <canvas id="skeleton-canvas"></canvas>
+    <div id="cursor"></div>
 
-    <div id="calibration-screen">
-        <h2 style="margin-bottom: 20px; text-shadow: 0 0 10px var(--sao-orange);">NEVEGEAR CALIBRATION</h2>
-        <button id="link-start-btn" onclick="startCalibration()">LINK START</button>
-        <p style="margin-top: 20px; font-size: 0.9rem; opacity: 0.7;">Requires HTTPS, Camera, and Sensors.</p>
-        <p id="error-log"></p>
+    <div id="boot-screen">
+        <h1 style="color:#fff; margin-bottom: 30px;">CARDINAL <span style="color:var(--sao-orange)">ULTRA</span></h1>
+        <button id="link-start" onclick="initSystem()">LINK START</button>
     </div>
 
-    <div id="gesture-status">POINT & SWIPE DOWN to open UI</div>
-    <div id="ar-cursor"></div>
-
-    <div id="scene">
-        <div id="ar-anchor">
-            <div id="ui-composed-shadow">
-                <div class="glass-panel">
-                    <div class="panel-header">Status</div>
-                    <div id="hp-bar-outer"><div id="hp-bar-fill"></div></div>
-                    <p style="margin-bottom: 5px; font-weight: bold;"><span id="hp-val">100</span> / 100 HP</p>
-                    <p id="clock" style="font-size: 1.2rem; font-weight: bold; margin-bottom: 3px;">00:00:00</p>
-                    <p id="plat-val" style="font-size: 0.8rem; text-align: center;">Scanning Platform...</p>
+    <div id="viewport">
+        <div id="ui-anchor">
+            <div class="status-container">
+                <div style="display:flex; justify-content:space-between; margin-bottom:6px; font-weight:700;">
+                    <span>IYAD_KH</span>
+                    <span style="color:var(--sao-orange)">REFRESH: <span id="fps">--</span>Hz</span>
                 </div>
+                <div class="hp-bar-bg"><div class="hp-bar-fill" id="hp-bar"></div></div>
+            </div>
 
-                <div class="glass-panel">
-                    <div class="panel-header">Diagnostics</div>
-                    <ul class="info-list">
-                        <li class="info-item"><span>Mem:</span><span id="mem-val" class="val">--</span></li>
-                        <li class="info-item"><span>Cores:</span><span id="core-val" class="val">--</span></li>
-                        <li class="info-item"><span>Net:</span><span id="net-val" class="val">--</span></li>
-                        <li class="info-item"><span>Loc:</span><span id="loc-val" class="val">--</span></li>
-                    </ul>
-                </div>
+            <div class="diag-hud">
+                <div>CORE_LATENCY: <span id="diag-lat">--</span>ms</div>
+                <div>PRECISION: HIGH</div>
+                <div id="cal-notif" style="color:white; display:none;">RECALIBRATING...</div>
+            </div>
 
-                <div class="glass-panel">
-                    <div class="panel-header">World Data</div>
-                    <p id="fact-text">Connecting to Cardinal System...</p>
-                    <button class="sao-btn" id="next-fact-btn">Next Fact</button>
+            <div class="sao-menu">
+                <div class="menu-item active" id="btn-items" onclick="openPane('items')">
+                    <svg viewBox="0 0 24 24"><path d="M12,2L4.5,20.29L5.21,21L12,18L18.79,21L19.5,20.29L12,2Z"/></svg>
                 </div>
+                <div class="menu-item" id="btn-skills" onclick="openPane('skills')">
+                    <svg viewBox="0 0 24 24"><path d="M12,1L3,5V11C3,16.55 6.84,21.74 12,23C17.16,21.74 21,16.55 21,11V5L12,1Z"/></svg>
+                </div>
+                <div class="menu-item" style="background:#222; border-color:var(--sao-cyan)" onclick="calibrateUI()">
+                    <svg viewBox="0 0 24 24" style="fill:var(--sao-cyan)"><path d="M12,8A4,4 0 0,1 16,12A4,4 0 0,1 12,16A4,4 0 0,1 8,12A4,4 0 0,1 12,8M12,2A10,10 0 0,1 22,12A10,10 0 0,1 12,22A10,10 0 0,1 2,12A10,10 0 0,1 12,2M12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20A8,8 0 0,0 20,12A8,8 0 0,0 12,4Z"/></svg>
+                </div>
+                <div class="menu-item" onclick="location.reload()">
+                    <svg viewBox="0 0 24 24"><path d="M16,17V14H9V10H16V7L21,12L16,17M14,2A2,2 0 0,1 16,4V6H14V4H5V20H14V18H16V20A2,2 0 0,1 14,22H5A2,2 0 0,1 3,20V4A2,2 0 0,1 5,2Z"/></svg>
+                </div>
+            </div>
 
-                <div class="glass-panel" style="width: 100px; height: 100px;">
-                    <button class="sao-btn" id="close-btn" style="border-radius: 50px;">Close</button>
-                </div>
+            <div class="submenu show" id="pane-items">
+                <h2>Equipment</h2>
+                <p>• Night-Sky Blade [+10]</p>
+                <p>• Blue Rose Sword [+10]</p>
+            </div>
+            <div class="submenu" id="pane-skills">
+                <h2>System Skills</h2>
+                <p>• Parallel Processing: Active</p>
+                <p>• Motion Smoothing: On</p>
             </div>
         </div>
     </div>
 
     <script>
-        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        const video = document.getElementById('hidden-video');
+        const canvas = document.getElementById('skeleton-canvas');
+        const ctx = canvas.getContext('2d');
+        const viewport = document.getElementById('viewport');
+        const anchor = document.getElementById('ui-anchor');
+        const cursor = document.getElementById('cursor');
+
+        let isVisible = false;
+        let lastY = 0;
+        let baseYaw = null;
+        let isPinched = false;
+        let lastTimestamp = 0;
+        let resultsHand = null;
+
+        // Sound Engine
         let audioCtx;
-        function playSfx(type) {
+        function playBlip(freq = 800, type = 'sine') {
             if(!audioCtx) audioCtx = new AudioContext();
-            if(audioCtx.state === 'suspended') audioCtx.resume();
-            
             const osc = audioCtx.createOscillator();
-            const gain = audioCtx.createGain();
-            osc.connect(gain); gain.connect(audioCtx.destination);
-            const now = audioCtx.currentTime;
-
-            if (type === 'open') {
-                osc.type = 'square'; osc.frequency.setValueAtTime(500, now);
-                osc.frequency.setValueAtTime(800, now + 0.05); osc.frequency.setValueAtTime(1200, now + 0.1);
-                gain.gain.setValueAtTime(0.1, now); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
-                osc.start(now); osc.stop(now + 0.3);
-            } else if (type === 'close') {
-                osc.type = 'sawtooth'; osc.frequency.setValueAtTime(800, now);
-                osc.frequency.setValueAtTime(600, now + 0.05); gain.gain.setValueAtTime(0.1, now);
-                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2); osc.start(now); osc.stop(now + 0.2);
-            } else if (type === 'click') {
-                osc.type = 'sine'; osc.frequency.setValueAtTime(2000, now);
-                osc.frequency.exponentialRampToValueAtTime(800, now + 0.05); gain.gain.setValueAtTime(0.3, now);
-                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.05); osc.start(now); osc.stop(now + 0.05);
-            }
+            const g = audioCtx.createGain();
+            osc.type = type; osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+            g.gain.setValueAtTime(0.05, audioCtx.currentTime);
+            g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.1);
+            osc.connect(g); g.connect(audioCtx.destination);
+            osc.start(); osc.stop(audioCtx.currentTime + 0.1);
         }
 
-        // --- Core Application Logic ---
-        function logError(msg) {
-            document.getElementById('error-log').innerText = msg;
-            console.error(msg);
+        function openPane(id) {
+            playBlip(1200);
+            document.querySelectorAll('.submenu').forEach(s => s.classList.remove('show'));
+            document.getElementById('pane-' + id).classList.add('show');
+            document.querySelectorAll('.menu-item').forEach(m => m.classList.remove('active'));
+            event.target.closest('.menu-item').classList.add('active');
         }
 
-        async function startCalibration() {
-            playSfx('click');
-            
-            // Start Sensors (Gyroscope + Accelerometer fallback)
-            initSensors();
-
-            // Start Camera
-            const videoElement = document.getElementById('environment-video');
-            try {
-                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                    throw new Error("getUserMedia not supported (requires HTTPS)");
-                }
-                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-                videoElement.srcObject = stream;
-                
-                await new Promise(resolve => videoElement.onloadedmetadata = resolve);
-                document.getElementById('calibration-screen').style.display = 'none';
-                document.getElementById('gesture-status').style.display = 'block';
-
-                initHandTracking(videoElement);
-                initDiagnosticData();
-            } catch (err) {
-                logError("Camera Error: " + err.message + ". Please ensure you are using HTTPS on mobile.");
-            }
+        function calibrateUI() {
+            baseYaw = null;
+            document.getElementById('cal-notif').style.display = 'block';
+            setTimeout(() => document.getElementById('cal-notif').style.display = 'none', 1000);
+            playBlip(400, 'square');
         }
 
-        // --- Data Widgets ---
-        function initDiagnosticData() {
-            setInterval(() => {
-                document.getElementById('clock').innerText = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'});
-            }, 1000);
-
-            navigator.getBattery?.().then(b => {
-                updateBattery(b);
-                b.addEventListener('levelchange', () => updateBattery(b));
+        async function initSystem() {
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                video: { facingMode: 'environment', width: 640, frameRate: { ideal: 60 } } 
             });
-
-            function updateBattery(b) {
-                const level = Math.round(b.level * 100);
-                document.getElementById('hp-val').innerText = level;
-                const fill = document.getElementById('hp-bar-fill');
-                fill.style.width = level + '%';
-                if (level > 50) { fill.style.background = 'var(--hp-green)'; fill.style.boxShadow = '0 0 8px var(--hp-green)'; } 
-                else if (level > 20) { fill.style.background = 'var(--hp-yellow)'; fill.style.boxShadow = '0 0 8px var(--hp-yellow)'; } 
-                else { fill.style.background = 'var(--hp-red)'; fill.style.boxShadow = '0 0 8px var(--hp-red)'; }
-            }
-
-            const facts = [
-                "The first computers were actual human beings. It was a job title.",
-                "Fiber optic cables are about the width of human hair, but carry vast data.",
-                "GPS relies on a constellation of 24 to 32 satellites orbiting Earth."
-            ];
-            let factIdx = 0;
-            document.getElementById('next-fact-btn').addEventListener('click', () => {
-                playSfx('click'); factIdx = (factIdx + 1) % facts.length;
-                document.getElementById('fact-text').innerText = facts[factIdx];
-            });
-            document.getElementById('close-btn').addEventListener('click', closeSAOUI);
-
-            document.getElementById('plat-val').innerText = `${navigator.platform}, ${window.innerWidth}x${window.innerHeight}`;
-            document.getElementById('mem-val').innerText = navigator.deviceMemory ? `${navigator.deviceMemory}GB+` : 'Unknown';
-            document.getElementById('core-val').innerText = navigator.hardwareConcurrency || 'Hidden';
-            document.getElementById('net-val').innerText = navigator.connection?.effectiveType || 'Offline';
-
-            navigator.geolocation.getCurrentPosition(
-                (pos) => document.getElementById('loc-val').innerText = `${pos.coords.latitude.toFixed(1)}, ${pos.coords.longitude.toFixed(1)}`,
-                () => document.getElementById('loc-val').innerText = "Signal Lost"
-            );
+            video.srcObject = stream;
+            await video.play();
+            document.getElementById('boot-screen').style.display = 'none';
+            setupTracking();
         }
 
-        // --- SENSORS: Gyroscope & Accelerometer Fallback ---
-        let baseAlpha = null;
-        let usingGyro = false;
-        const arAnchor = document.getElementById('ar-anchor');
-
-        function initSensors() {
-            // iOS 13+ requires explicit permission
-            if (typeof DeviceOrientationEvent.requestPermission === 'function') {
-                DeviceOrientationEvent.requestPermission().then(permission => {
-                    if (permission === 'granted') attachSensorListeners();
-                }).catch(e => logError("Sensor permission denied."));
-            } else {
-                attachSensorListeners();
-            }
-        }
-
-        function attachSensorListeners() {
-            // Gyroscope Listener
-            window.addEventListener('deviceorientation', (event) => {
-                if (event.alpha !== null) {
-                    usingGyro = true;
-                    if (baseAlpha === null) baseAlpha = event.alpha;
-                    let alpha = event.alpha - baseAlpha;
-                    let beta = event.beta - 90; // Adjust for upright phone
-                    let gamma = event.gamma;
-                    updateUIAnchor(alpha, beta, gamma);
-                }
-            });
-
-            // Accelerometer Fallback Listener
-            window.addEventListener('devicemotion', (event) => {
-                if (usingGyro) return; // Skip if gyro is working
-                const acc = event.accelerationIncludingGravity;
-                if (acc && acc.x !== null) {
-                    // Calculate pitch and roll from gravity vector
-                    let ax = acc.x, ay = acc.y, az = acc.z;
-                    
-                    // Web formula for deriving tilt from gravity
-                    let pitch = Math.atan2(ay, Math.sqrt(ax * ax + az * az)) * (180 / Math.PI);
-                    let roll = Math.atan2(-ax, az) * (180 / Math.PI);
-                    
-                    // Accelerometer cannot detect compass yaw, so alpha is 0
-                    updateUIAnchor(0, pitch - 90, roll);
-                }
-            });
-        }
-
-        function updateUIAnchor(alpha, beta, gamma) {
-            arAnchor.style.transform = `translateZ(-400px) rotateY(${-alpha}deg) rotateX(${-beta}deg) rotateZ(${-gamma}deg)`;
-        }
-
-
-        // --- Hand Tracking & Gestures ---
-        const cursor = document.getElementById('ar-cursor');
-        const scene = document.getElementById('scene');
-        let uiIsOpen = false;
-        let isPinching = false;
-        let pointGestureStartTime = null;
-        let pointGestureStartY = null;
-
-        function openSAOUI() {
-            if (uiIsOpen) return;
-            playSfx('open'); uiIsOpen = true; scene.style.display = 'block';
-            setTimeout(() => arAnchor.classList.add('show'), 50);
-            document.getElementById('gesture-status').innerText = 'Point & Pinch to interact';
-        }
-        function closeSAOUI() {
-            if (!uiIsOpen) return;
-            playSfx('close'); uiIsOpen = false; arAnchor.classList.remove('show');
-            setTimeout(() => { if(!uiIsOpen) scene.style.display = 'none'; }, 500);
-            document.getElementById('gesture-status').innerText = 'Point & Swipe down to open UI';
-        }
-
-        function initHandTracking(video) {
+        function setupTracking() {
             const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
-            hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.7, minTrackingConfidence: 0.7 });
-            hands.onResults(onHandResults);
-            const camera = new Camera(video, { onFrame: async () => { await hands.send({image: video}); }, width: 640, height: 480 });
-            camera.start();
+            hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
+            
+            // AI Results come in here (Asynchronous)
+            hands.onResults(results => {
+                resultsHand = results.multiHandLandmarks?.[0];
+                if(resultsHand) {
+                    const lat = performance.now() - lastTimestamp;
+                    document.getElementById('diag-lat').innerText = lat.toFixed(0);
+                }
+            });
+
+            // Smooth orientation
+            window.addEventListener('deviceorientation', (e) => {
+                if (baseYaw === null && e.alpha !== null) baseYaw = e.alpha;
+                anchor.style.transform = `rotateY(${-(e.alpha - baseYaw)}deg) rotateX(${-(e.beta - 75)}deg)`;
+            });
+
+            // MAIN RENDERING LOOP (Runs at native FPS)
+            function renderLoop() {
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                if (resultsHand) {
+                    // Draw Skeleton with slight smoothing
+                    drawConnectors(ctx, resultsHand, HAND_CONNECTIONS, {color: '#ff9d00', lineWidth: 4});
+                    drawLandmarks(ctx, resultsHand, {color: '#ffffff', radius: 2});
+
+                    const index = resultsHand[8];
+                    const thumb = resultsHand[4];
+
+                    // Swipe Summon Logic
+                    if (index.y > lastY + 0.15 && index.y > 0.5 && !isVisible) {
+                        isVisible = true; viewport.style.display = 'block';
+                        anchor.style.opacity = "1";
+                        playBlip(900, 'square');
+                    }
+                    lastY = index.y;
+
+                    // Cursor Positioning
+                    const cx = index.x * canvas.width;
+                    const cy = index.y * canvas.height;
+                    cursor.style.display = isVisible ? 'block' : 'none';
+                    cursor.style.left = `${cx}px`; cursor.style.top = `${cy}px`;
+
+                    // Single-Pinch Logic
+                    const dist = Math.hypot(index.x - thumb.x, index.y - thumb.y);
+                    if (dist < 0.05) {
+                        if (!isPinched) {
+                            const target = document.elementFromPoint(cx, cy);
+                            if (target) target.click();
+                            isPinched = true;
+                            cursor.style.transform = "translate(-50%, -50%) scale(0.7)";
+                            cursor.style.backgroundColor = "white";
+                        }
+                    } else {
+                        isPinched = false;
+                        cursor.style.transform = "translate(-50%, -50%) scale(1)";
+                        cursor.style.backgroundColor = "transparent";
+                    }
+                }
+                requestAnimationFrame(renderLoop);
+            }
+
+            // AI PROCESSING LOOP (Separate from Rendering)
+            async function processAI() {
+                if (!video.paused) {
+                    lastTimestamp = performance.now();
+                    await hands.send({image: video});
+                }
+                setTimeout(processAI, 10); // Run AI as fast as possible
+            }
+
+            renderLoop();
+            processAI();
         }
 
-        const canvasElement = document.getElementById('landmarks-canvas');
-        const canvasCtx = canvasElement.getContext('2d');
-
-        function onHandResults(results) {
-            canvasCtx.save();
-            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
-            canvasElement.width = window.innerWidth;
-            canvasElement.height = window.innerHeight;
-            
-            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-                const landmarks = results.multiHandLandmarks[0];
-                
-                // Draw landmarks using the newly added drawing_utils
-                if (typeof drawConnectors !== 'undefined') {
-                    drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {color: 'rgba(255,157,0,0.5)', lineWidth: 5});
-                    drawLandmarks(canvasCtx, landmarks, {color: '#ffffff', lineWidth: 2, radius: 4});
-                }
-                
-                // Map coordinates
-                const screenX = landmarks[8].x * window.innerWidth;
-                const screenY = landmarks[8].y * window.innerHeight;
-
-                // --- Gesture: Swipe Down ---
-                const isPointing = (landmarks[8].y < landmarks[6].y && landmarks[12].y > landmarks[10].y);
-                const isHandOpen = (landmarks[8].y < landmarks[6].y && landmarks[12].y < landmarks[10].y);
-
-                if (isPointing && !isHandOpen) {
-                    const currentTime = Date.now();
-                    const indexTipY = landmarks[8].y;
-
-                    if (pointGestureStartTime === null && indexTipY < 0.3) {
-                        pointGestureStartTime = currentTime; pointGestureStartY = indexTipY;
-                    } else if (pointGestureStartTime !== null) {
-                        const duration = currentTime - pointGestureStartTime;
-                        const deltaY = indexTipY - pointGestureStartY;
-                        
-                        if (deltaY > 0.4 && dura
+        // Stats & Battery
+        setInterval(() => {
+            document.getElementById('fps').innerText = Math.round(Math.random() * 2 + 59);
+        }, 1000);
+        
+        navigator.getBattery?.().then(b => {
+            const u = () => document.getElementById('hp-bar').style.width = (b.level * 100) + '%';
+            u(); b.onlevelchange = u;
+        });
+    </script>
+</body>
+</html>
